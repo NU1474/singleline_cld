@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BESS SLD Studio</title>
+<style>
+:root{--ink:#1d2329;--mut:#5d6872;--line:#c9d0d6;--bg:#e9ecee;--acc:#0b5cab}
+*{box-sizing:border-box}body{margin:0;font:13px/1.45 "Segoe UI","Hiragino Sans","Noto Sans JP",sans-serif;color:var(--ink);background:var(--bg)}
+header{background:#1d2329;color:#fff;padding:8px 12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+header h1{font-size:16px;margin:0 10px 0 0;font-weight:600}header .sp{flex:1}
+button,select,input{font:inherit}
+button{padding:5px 10px;border:1px solid #8a949c;background:#fff;color:var(--ink);border-radius:3px;cursor:pointer}
+button.on{background:var(--acc);color:#fff;border-color:var(--acc)}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #f0a020;outline-offset:1px}
+main{display:grid;grid-template-columns:290px minmax(0,1fr) 310px;gap:10px;padding:10px;align-items:start}
+.panel{background:#fff;border:1px solid var(--line);padding:10px;max-height:calc(100vh - 64px);overflow:auto}
+#cv{padding:0;background:#fff}#cv svg{display:block;width:100%;min-width:760px;height:auto}
+h2{font-size:12px;margin:12px 0 6px;padding-bottom:3px;border-bottom:2px solid var(--ink)}h2:first-child{margin-top:0}
+.f{display:grid;grid-template-columns:1fr 112px;gap:6px;align-items:center;margin:3px 0}
+.f input[type=number],.f input[type=text],.f select{width:100%;padding:3px 5px;border:1px solid #9aa4ac;border-radius:2px}
+.f input[type=checkbox]{justify-self:start;width:16px;height:16px}.u{color:var(--mut);font-size:11px}
+.kv{display:grid;grid-template-columns:1fr auto;gap:2px 8px;font-variant-numeric:tabular-nums}.kv b{text-align:right}
+.w{border-left:3px solid #c77700;background:#fff6e5;padding:4px 8px;margin:4px 0}.ok{border-left:3px solid #2e7d32;background:#eef7ee;padding:4px 8px}
+.n{color:var(--mut);font-size:11px;margin-top:4px}
+@media(max-width:1000px){main{grid-template-columns:1fr}.panel{max-height:none}}
+@media print{header,#in,#rt{display:none}main{display:block;padding:0}.panel{border:0;max-height:none;overflow:visible}#cv svg{min-width:0}}
+</style></head><body>
+<header><h1>BESS SLD Studio</h1>
+<span id="vb"></span><span class="sp"></span>
+<button id="gen">Generate SLD</button><button id="xs">Export SVG</button><button id="xp">Export PNG</button><button id="pr">Print</button><button id="sv">Save Configuration</button><button id="ld">Load Configuration</button><input type="file" id="fi" accept=".json" hidden>
+</header>
+<main><aside id="in" class="panel"></aside><section id="cv" class="panel"></section><aside id="rt" class="panel"></aside></main>
+<script>
+const D={energy:1.5,vmin:1000,vmax:1500,cellAh:314,cellV:3.2,cellS:52,cpp:52,racks:4,ppr:8,cont:1,comb:true,ncomb:1,disc:true,fuse:false,dbrk:false,pmode:'multi',pn:4,pkw:500,pdmin:1000,pdmax:1500,pac:690,pf:1,panel:true,abrk:true,abus:true,freq:50,tr:true,tunit:'kVA',tcap:2500,tpri:6.6,tsec:690,tfreq:50,tn:1,mv:true,gbrk:true,gv:6.6,gcp:'PCC',ct:true,vt:true,rly:true,mtr:true,bms:true,rbms:true,mbms:true,pcsc:true,ems:true,scada:true,remote:true,estop:true,smoke:true,gas:true,fdet:true,fsup:true,hvac:true,imd:true,spd:true,gnd:true};
+const G=[['Battery System',[['energy','Battery Energy','MWh'],['vmin','DC Voltage Min','V'],['vmax','DC Voltage Max','V'],['cellAh','Cell Capacity','Ah'],['cellV','Cell Nominal V','V'],['cellS','Cell Series','S'],['cpp','Cells / Pack',''],['racks','Racks / Container',''],['ppr','Packs / Rack',''],['cont','Containers','']]],
+['DC System',[['comb','DC Combiner','b'],['ncomb','DC Combiner Qty',''],['disc','DC Disconnect','b'],['fuse','DC Fuse','b'],['dbrk','DC Breaker','b']]],
+['PCS',[['pmode','PCS Type','s',['multi:複数PCS','single:単一PCS']],['pn','PCS Qty',''],['pkw','PCS Rating','kW'],['pdmin','PCS DC Vmin','V'],['pdmax','PCS DC Vmax','V'],['pac','PCS AC Voltage','V'],['pf','Power Factor','']]],
+['AC System',[['panel','AC Panel','b'],['abrk','AC Breaker','b'],['abus','AC Bus','b'],['freq','Frequency','s',['50:50 Hz','60:60 Hz']],['tr','Transformer','b']]],
+['Transformer',[['tunit','Unit','s',['kVA:kVA','MVA:MVA']],['tcap','Capacity',''],['tpri','Primary','kV'],['tsec','Secondary','V'],['tfreq','Frequency','Hz'],['tn','Quantity','']]],
+['Grid / MV',[['mv','MV Switchgear','b'],['gbrk','Grid Breaker','b'],['gv','Grid Voltage','kV'],['gcp','Connection Point','t'],['ct','CT','b'],['vt','VT/PT','b'],['rly','Protection Relay','b'],['mtr','Meter','b']]],
+['BMS / EMS / SCADA',[['bms','BMS','b'],['rbms','Rack BMS','b'],['mbms','Master BMS','b'],['pcsc','PCS Controller','b'],['ems','EMS','b'],['scada','SCADA','b'],['remote','Remote Monitoring','b']]],
+['Safety',[['estop','Emergency Stop','b'],['smoke','Smoke Detector','b'],['gas','Gas Detector','b'],['fdet','Fire Detection','b'],['fsup','Fire Suppression','b'],['hvac','HVAC','b'],['imd','Insulation Monitoring','b'],['spd','SPD','b'],['gnd','Grounding','b']]]];
+const SF=[['estop','E-Stop'],['smoke','Smoke Det.'],['gas','Gas Det.'],['fdet','Fire Detection'],['fsup','Fire Suppress.'],['hvac','HVAC'],['imd','Insulation Mon.'],['spd','SPD']];
+const VW=[['pwr','Power SLD'],['ctl','Control / Comm'],['safe','Safety'],['full','Full System']];
+let cfg={...D},view='full',sel=null,M=null;
+const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const f2=(v,d=2)=>isFinite(v)?(+v).toFixed(d):'-';
+
+function build(c){
+ const N=[],E=[],pw=[],cm=[],sf=[],W=[];const P=78,GP=58,BW=118,BH=54,pad=i=>String(i+1).padStart(2,'0');
+ const showC=view=='ctl'||view=='full',showS=view=='safe'||view=='full';
+ const cl=(v,a,b)=>Math.min(b,Math.max(a,Math.round(v)||a));
+ const nRt=Math.max(1,Math.round(c.racks*c.cont)||1),nR=Math.min(nRt,24);
+ const nP=c.pmode=='single'?1:cl(c.pn,1,16),nC=c.comb?cl(c.ncomb,1,nR):0,nT=c.tr?cl(c.tn,1,6):0;
+ const totKw=nP*c.pkw,trKva=(c.tunit=='MVA'?c.tcap*1000:c.tcap)*nT;
+ const packE=c.cellAh*c.cpp*c.cellV/1000,totEc=packE*c.ppr*nRt/1000,rackE=c.energy*1000/nRt,rackVn=c.ppr*c.cellS*c.cellV;
+ const Vr=`${c.vmin}-${c.vmax} V`;
+ // checks
+ [['energy','Battery Energy'],['vmin','DC Voltage Min'],['vmax','DC Voltage Max'],['cellAh','Cell Capacity'],['cellS','Cell Series'],['racks','Rack数量'],['ppr','RackあたりPack'],['pkw','PCS定格出力'],['pac','PCS AC Voltage'],['gv','Grid Voltage'],['tcap','Transformer容量'],['tsec','Transformer Secondary'],['tpri','Transformer Primary']].forEach(([k,l])=>{if(!(c[k]>0))W.push(`未入力/不正な値: ${l}`)});
+ if(nRt>24)W.push(`Rack総数 ${nRt} は24台までを描画します`);
+ if(c.vmin>=c.vmax)W.push('DC Voltage Min が Max 以上です');
+ if(c.energy>0&&totKw>0){const cr=totKw/1000/c.energy;if(cr>2)W.push(`PCS総出力がBattery Energyに対して過大です (${f2(cr)} C)`)}
+ if(totEc>0&&Math.abs(totEc-c.energy)/c.energy>.15)W.push(`セル構成からの計算容量 ${f2(totEc)} MWh が入力 ${f2(c.energy)} MWh と15%以上異なります`);
+ if(rackVn<c.vmin||rackVn>c.vmax)W.push(`Rack公称電圧 ${f2(rackVn,0)} V がDC電圧範囲外です`);
+ if(c.pdmin>c.vmin||c.pdmax<c.vmax)W.push('Battery電圧範囲がPCS DC電圧範囲に収まっていません (PCS電圧とBattery電圧の不整合)');
+ if(c.tr){if(trKva<totKw/(c.pf||1))W.push(`Transformer容量 ${f2(trKva/1000)} MVA < PCS総出力 ${f2(totKw/1000)} MW / PF`);
+  if(c.tsec!=c.pac)W.push(`Transformer二次電圧 ${c.tsec} V ≠ PCS AC電圧 ${c.pac} V`);
+  if(c.tpri!=c.gv)W.push(`Transformer一次電圧 ${c.tpri} kV ≠ Grid電圧 ${c.gv} kV`);
+  if(c.tfreq!=c.freq)W.push('Transformer周波数がAC周波数と異なります')}
+ else if(c.pac/1000!=c.gv)W.push('Transformer OFF: PCS AC電圧とGrid電圧が異なります');
+ if(!(c.pf>0&&c.pf<=1))W.push('Power Factor は 0〜1 で入力してください');
+ // layout
+ const maxN=Math.max(nR,nP,nC,nT,1),top=40+(showC?100:0),cy=top+maxN*P/2,ctrlY=62;
+ let x=40+(showC&&c.bms&&c.rbms?130:0);
+ const stage=(a,w=BW,h=BH)=>{a.forEach((n,i)=>{n.x=x;n.w=w;n.h=h;n.y=cy+(i-(a.length-1)/2)*P;N.push(n)});x+=w+GP;return a};
+ const mk=(id,type,name,rating,v,props={},extra={})=>({id,type,name,rating,v,props,...extra});
+ const link=(A,B)=>{const pairs=[];
+  if(A.length>=B.length)A.forEach((a,i)=>pairs.push([a,B[Math.floor(i*B.length/A.length)]]));else B.forEach((b,j)=>pairs.push([A[Math.floor(j*A.length/B.length)],b]));
+  pairs.forEach(([a,b])=>{E.push({from:a.id,to:b.id,type:'power'});const x1=a.x+a.w,x2=b.x,m=(x1+x2)/2;pw.push(a.y==b.y?`M${x1} ${a.y}H${x2}`:`M${x1} ${a.y}H${m}V${b.y}H${x2}`)})};
+ const arr=(n,fn)=>Array.from({length:n},(_,i)=>fn(i));
+ const racks=stage(arr(nR,i=>mk(`Battery-Rack-${pad(i)}`,'Battery Rack',`Battery Rack-${pad(i)}`,`${f2(rackE,0)} kWh`,Vr,{Energy:`${f2(rackE,0)} kWh`,Voltage:Vr,Pack:c.ppr,Cell:`${c.cellS}S`,'Cell Capacity':`${c.cellAh} Ah`})));
+ let prev=racks;const ns=(a)=>{link(prev,a);prev=a};
+ if(c.comb)ns(stage(arr(nC,i=>mk(`DC-Combiner-${pad(i)}`,'DC Combiner',`DC Combiner-${pad(i)}`,`${Math.ceil(nR/nC)}-in`,`DC ${c.vmax} V`,{Inputs:`${Math.ceil(nR/nC)} racks`})),BW));
+ const g=prev.length;
+ [['fuse','DC-Fuse','DC Fuse'],['dbrk','DC-Breaker','DC Breaker'],['disc','DC-Disconnect','DC Disconnect']].forEach(([k,id,nm])=>{if(c[k])ns(stage(arr(g,i=>mk(`${id}-${pad(i)}`,nm,`${nm}-${pad(i)}`,`${c.vmax} V DC`,'')),104,40))});
+ const pcs=stage(arr(nP,i=>mk(`PCS-${pad(i)}`,'PCS',`PCS-${pad(i)}`,`${c.pkw} kW`,`AC ${c.pac} V`,{'Rated Power':`${c.pkw} kW`,'DC Voltage':`${c.pdmin}-${c.pdmax} V`,'AC Voltage':`${c.pac} V`,'Power Factor':c.pf,Quantity:1}),{dcVoltage:`${c.pdmin}-${c.pdmax} V`,acVoltage:`${c.pac} V`,quantity:1}));ns(pcs);
+ if(c.abrk)ns(stage(arr(nP,i=>mk(`AC-Breaker-${pad(i)}`,'AC Breaker',`AC Breaker-${pad(i)}`,`${c.pac} V AC`,'')),104,40));
+ let bus=null,panel=null,trs=null,mv=null,gb=null;
+ if(c.abus)ns(bus=stage([mk('AC-Bus','AC Bus','AC Bus',`${c.pac} V`,`${c.freq} Hz`)]));
+ if(c.panel)ns(panel=stage([mk('AC-Panel','AC Panel','AC Panel',`${c.pac} V`,`${f2(totKw/1000)} MW`)]));
+ if(c.tr)ns(trs=stage(arr(nT,i=>mk(`Transformer-${pad(i)}`,'Transformer',`Transformer-${pad(i)}`,`${c.tcap} ${c.tunit}`,`${c.tpri}kV/${c.tsec}V`,{Capacity:`${c.tcap} ${c.tunit}`,Primary:`${c.tpri} kV`,Secondary:`${c.tsec} V`,Frequency:`${c.tfreq} Hz`}))));
+ if(c.mv)ns(mv=stage([mk('MV-Switchgear','MV Switchgear','MV Switchgear',`${c.gv} kV`,'MV')]));
+ if(c.gbrk)ns(gb=stage([mk('Grid-Breaker','Grid Breaker','Grid Breaker',`${c.gv} kV`,'',{},{})],104,40));
+ const grid=stage([mk('Grid','Grid','Grid',`${c.gv} kV`,c.gcp||'PCC',{'Connection Point':c.gcp||'-'})]);ns(grid);
+ if(mv){let yy=mv.y,k=0;const ap=[['ct','CT'],['vt','VT/PT'],['rly','Prot. Relay'],['mtr','Meter']].filter(a=>c[a[0]]);let py=mv.y+BH/2;
+  ap.forEach(([kk,nm])=>{const n=mk(`${nm.replace(/\W/g,'')}-01`,nm,nm,'','',{},{x:mv.x,w:BW,h:24,y:py+22+12});N.push(n);E.push({from:mv.id,to:n.id,type:'sense'});pw.push(`M${mv.x+BW/2} ${py}V${n.y-12}`);py=n.y+12});}
+ const gx=grid.x;let maxX=gx+BW+30;
+ // control
+ if(showC){const cs=[];const add=(k,id,nm,sub,xx)=>{if(!c[k])return;const n=mk(id,'Control',nm,sub,'',{},{x:xx,w:BW,h:40,y:ctrlY});cs.push(n)};
+  const first=(...a)=>a.find(Boolean);
+  add('mbms','Master-BMS','Master BMS','',racks[0].x);add('pcsc','PCS-Controller','PCS Controller','',pcs[0].x);
+  add('ems','EMS','EMS','',first(bus,panel,trs&&trs[0],mv,gb,grid).x);add('scada','SCADA','SCADA','',first(trs&&trs[0],mv,gb,grid).x);add('remote','Remote-Monitoring','Remote Monitoring','',gx);
+  cs.forEach((n,i)=>{if(i&&n.x<cs[i-1].x+BW+24)n.x=cs[i-1].x+BW+30;N.push(n);maxX=Math.max(maxX,n.x+BW+30)});
+  cs.forEach((n,i)=>{if(i){const a=cs[i-1];cm.push(`M${a.x+a.w} ${ctrlY}H${n.x}`);E.push({from:a.id,to:n.id,type:'comm'})}});
+  const pc=cs.find(n=>n.id=='PCS-Controller');if(pc){cm.unshift(`M${pc.x+BW/2} ${ctrlY}V${pcs[pcs.length-1].y}`);pcs.forEach(p=>E.push({from:pc.id,to:p.id,type:'comm'}))}
+  if(c.bms&&c.rbms){const rb=racks.map((r,i)=>mk(`Rack-BMS-${pad(i)}`,'Control',`Rack BMS-${pad(i)}`,'','',{},{x:40,w:96,h:34,y:r.y}));rb.forEach((b,i)=>{N.push(b);cm.push(`M${b.x+b.w} ${b.y}H${racks[i].x}M${b.x} ${b.y}H26`);E.push({from:b.id,to:racks[i].id,type:'comm'})});
+   const t=cs[0];if(t){cm.push(`M26 ${rb[0].y}V${ctrlY}H${t.x}`);if(t.id=='Master-BMS')rb.forEach(b=>E.push({from:b.id,to:t.id,type:'comm'}))}}}
+ const maxY=Math.max(...N.map(n=>n.y+n.h/2)),gnd=[];
+ if(showS){const items=SF.filter(s=>c[s[0]]),by=maxY+78;
+  items.forEach((s,i)=>{const n=mk(`Safety-${s[0]}`,'Safety',s[1],'','',{},{x:40+i*114,w:106,h:34,y:by});N.push(n);sf.push(`M${n.x+53} ${by-17}V${by-40}`);E.push({from:n.id,to:i==0?pcs[0].id:racks[0].id,type:'safety'})});
+  if(items.length)sf.push(`M${93} ${by-40}H${40+(items.length-1)*114+53}`);
+  if(c.gnd){[racks,trs||pcs].forEach(s=>{const l=s[s.length-1];gnd.push([l.x+l.w/2,l.y+l.h/2])});}}
+ return {N,E,pw,cm,sf,gnd,W,H:maxY+(showS?150:50),Wd:maxX,calc:{nRt,nP,nT,totKw,trKva,packE,totEc,rackE,rackVn}};
+}
+function colr(t){return{'Battery Rack':'#e3efe3','DC Combiner':'#f4eed6','PCS':'#dde9f7','Transformer':'#f8e6dc','MV Switchgear':'#eadff5','Grid':'#fff','AC Bus':'#e2e2e2','AC Panel':'#ececec','Control':'#eaf2fb','Safety':'#fdeceb'}[t]||'#f7f7f7'}
+function draw(){
+ M=build(cfg);const{N,pw,cm,sf,gnd,H,Wd}=M;let s=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${Wd} ${H}" font-family="Segoe UI,Hiragino Sans,Noto Sans JP,sans-serif"><style>.p{stroke:#1d2329;stroke-width:3;fill:none}.c{stroke:#0b5cab;stroke-width:1.3;stroke-dasharray:5 4;fill:none}.s{stroke:#b3261e;stroke-width:1.3;stroke-dasharray:2 3;fill:none}.g{stroke:#1d2329;stroke-width:1.5;fill:none}.n1{font-size:11px;font-weight:700}.n2{font-size:10px}</style><rect width="100%" height="100%" fill="#fff"/>`;
+ s+=`<path class="c" d="${cm.join('')}"/><path class="s" d="${sf.join('')}"/><path class="p" d="${pw.join('')}"/>`;
+ gnd.forEach(([a,b])=>s+=`<path class="g" d="M${a} ${b}V${b+8}M${a-9} ${b+8}H${a+9}M${a-6} ${b+12}H${a+6}M${a-3} ${b+16}H${a+3}"/>`);
+ N.forEach(n=>{const on=n.id==sel,sm=n.h<40,cx=n.x+n.w/2;
+  s+=`<g data-id="${esc(n.id)}" style="cursor:pointer"><rect x="${n.x}" y="${n.y-n.h/2}" width="${n.w}" height="${n.h}" fill="${colr(n.type)}" stroke="${on?'#0b5cab':'#1d2329'}" stroke-width="${on?3:1.5}" ${n.type=='Control'?'stroke-dasharray="5 3"':''}${n.type=='Grid'?' rx="14"':''}/>`;
+  const L=[n.name,n.rating,n.v].filter(Boolean);const y0=n.y-(L.length-1)*6.5+3.5;
+  L.forEach((t,i)=>s+=`<text x="${cx}" y="${y0+i*13}" text-anchor="middle" class="${i?'n2':'n1'}">${esc(t)}</text>`);s+='</g>'});
+ s+=`<text x="${Wd-12}" y="${H-10}" text-anchor="end" font-size="10" fill="#5d6872">BESS SLD Studio — Conceptual Design / Preliminary Check only. Not for construction.</text>
+ <text x="12" y="${H-10}" font-size="10" fill="#5d6872">Power: solid  /  Communication: dotted blue  /  Safety: dotted red</text></svg>`;
+ $('#cv').innerHTML=s;info();
+}
+function info(){
+ const c=M.calc,e=cfg.energy;
+ const rows=[['Battery Energy (input)',f2(e)+' MWh'],['Battery Energy (cell calc)',f2(c.totEc)+' MWh'],['Rack × Pack',c.nRt+' × '+cfg.ppr+' = '+c.nRt*cfg.ppr],['Pack Energy',f2(c.packE,1)+' kWh'],['Rack Energy',f2(c.rackE,0)+' kWh'],['Rack Nominal V',f2(c.rackVn,0)+' V'],['PCS Output',f2(c.totKw/1000)+' MW'],['PCS Quantity',c.nP],['PCS Unit',cfg.pkw+' kW'],['Transformer',cfg.tr?f2(c.trKva/1000)+' MVA':'OFF'],['Grid Voltage',cfg.gv+' kV'],['Battery / PCS Ratio',f2(e/(c.totKw/1000))+' (MWh/MW)'],['C-rate',f2(c.totKw/1000/e)+' C']];
+ let h='<h2>System Summary</h2><div class="kv">'+rows.map(r=>`<span>${r[0]}</span><b>${esc(r[1])}</b>`).join('')+'</div><h2>Conceptual Design Check</h2>';
+ h+=M.W.length?M.W.map(w=>`<div class="w">${esc(w)}</div>`).join(''):'<div class="ok">Preliminary Check: 矛盾は検出されませんでした</div>';
+ h+='<div class="n">概念検討用の簡易チェックです。法令適合・実施設計上の安全性を保証するものではありません。</div><h2>Equipment</h2>';
+ const n=M.N.find(n=>n.id==sel);
+ if(!n)h+='<div class="n">SLD上の機器をクリックすると詳細を表示します。</div>';
+ else{const cn=M.E.filter(x=>x.from==n.id||x.to==n.id);
+  h+=`<b>${esc(n.name)}</b><div class="kv"><span>Type</span><b>${esc(n.type)}</b>`+(n.rating?`<span>Rating</span><b>${esc(n.rating)}</b>`:'')+Object.entries(n.props||{}).map(([k,v])=>`<span>${esc(k)}</span><b>${esc(v)}</b>`).join('')+`</div><h2>Connections</h2><div class="n">`+(cn.map(x=>`${esc(x.from)} → ${esc(x.to)} <i>(${x.type})</i>`).join('<br>')||'-')+'</div>'}
+ $('#rt').innerHTML=h;
+}
+function form(){
+ $('#in').innerHTML=G.map(([t,fs])=>`<h2>${t}</h2>`+fs.map(([k,l,u,o])=>{let i;
+  if(u=='b')i=`<input type="checkbox" data-k="${k}" ${cfg[k]?'checked':''}>`;
+  else if(u=='s')i=`<select data-k="${k}">${o.map(x=>{const[v,tx]=x.split(':');return`<option value="${v}" ${String(cfg[k])==v?'selected':''}>${tx}</option>`}).join('')}</select>`;
+  else if(u=='t')i=`<input type="text" data-k="${k}" value="${esc(cfg[k])}">`;
+  else i=`<input type="number" step="any" data-k="${k}" value="${isNaN(cfg[k])?'':cfg[k]}">`;
+  return`<label class="f"><span>${l} <span class="u">${u&&u!='b'&&u!='s'&&u!='t'?u:''}</span></span>${i}</label>`}).join('')).join('');
+}
+$('#in').addEventListener('input',e=>{const t=e.target,k=t.dataset.k;if(!k)return;
+ cfg[k]=t.type=='checkbox'?t.checked:t.type=='number'?(t.value===''?NaN:+t.value):(t.tagName=='SELECT'&&!isNaN(+t.value)?+t.value:t.value);draw()});
+$('#cv').addEventListener('click',e=>{const g=e.target.closest('[data-id]');sel=g?g.dataset.id:null;draw()});
+$('#vb').innerHTML=VW.map(([k,l])=>`<button data-v="${k}" class="${k==view?'on':''}">${l}</button>`).join(' ');
+$('#vb').addEventListener('click',e=>{const v=e.target.dataset.v;if(!v)return;view=v;document.querySelectorAll('#vb button').forEach(b=>b.classList.toggle('on',b.dataset.v==v));draw()});
+$('#gen').onclick=draw;$('#pr').onclick=()=>window.print();
+const dl=(blob,name)=>{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)};
+const svgStr=()=>{const s=$('#cv svg'),vb=s.viewBox.baseVal;return s.outerHTML.replace('<svg ',`<svg width="${vb.width}" height="${vb.height}" `)};
+$('#xs').onclick=()=>dl(new Blob([svgStr()],{type:'image/svg+xml'}),'bess-sld.svg');
+$('#xp').onclick=()=>{const vb=$('#cv svg').viewBox.baseVal,im=new Image();im.onload=()=>{const c=document.createElement('canvas');c.width=vb.width*2;c.height=vb.height*2;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(im,0,0,c.width,c.height);c.toBlob(b=>dl(b,'bess-sld.png'))};im.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svgStr())};
+$('#sv').onclick=()=>dl(new Blob([JSON.stringify({app:'BESS SLD Studio',version:1,config:cfg,model:{nodes:M.N.map(({x,y,w,h,...n})=>n),edges:M.E}},null,2)],{type:'application/json'}),'bess-config.json');
+$('#ld').onclick=()=>$('#fi').click();
+$('#fi').onchange=e=>{const f=e.target.files[0];if(!f)return;f.text().then(t=>{try{const j=JSON.parse(t);cfg={...D,...(j.config||j)};form();draw()}catch(x){alert('設定ファイルを読み込めませんでした: JSON形式を確認してください')}});e.target.value=''};
+form();draw();
+</script></body></html>
